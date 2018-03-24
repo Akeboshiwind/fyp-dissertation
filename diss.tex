@@ -1,0 +1,98 @@
+\documentclass{report}
+\usepackage{natbib}
+\usepackage{geometry}
+\usepackage{pdfpages}
+\usepackage{gensymb}
+\usepackage[titletoc]{appendix}
+
+\geometry{a4paper, portrait, margin=1in}
+
+
+\begin{document}
+
+% \includepdf[pages={1}]{data-mining-coversheet.pdf}
+% \setcounter{page}{1}
+
+\title{Dissertation} \author{Oliver Marshall}
+\maketitle
+\newpage
+
+\begin{abstract}
+Outline main aims and achievements of project
+No more that 300 words
+\end{abstract}
+\newpage
+
+\renewcommand{\abstractname}{Acknowledgments}
+\begin{abstract}
+  With many thanks to
+  \begin{itemize}
+      \item Project Tutor
+      \item Peers
+      \item Proofreaders
+  \end{itemize}
+\end{abstract}
+\newpage
+
+\tableofcontents
+\newpage
+
+\chapter{Introduction}
+\section{What is the problem?}
+\subsection{Introduce problem}
+\subsection{Indicate context for problem}
+\section{Why is this problem important/worth investigating?}
+*Most important section in this chapter*
+\section{The structure of this document}
+
+\chapter{Literature Review}
+\section{What research has already been done?}
+\subsection{Domain specific vs Domain independent}
+\section{Relevance to this work}
+\section{Appraisal of other research}
+\section{Identify gap in research}
+
+\chapter{Identify Potential Solution}
+\section{Use appropriate methods and techniques to:}
+\subsection{Identify requirements of the solution}
+\subsection{Identify structure and approach of the solution}
+
+\chapter{Requirements Analysis and Requirements Specification}
+\section{Process used to capture requirements}
+\section{Identify and Discuss Key Requirements}
+\subsection{Areas of Difficulty or Conflict}
+
+\chapter{Analyze Work}
+\section{Critically analyze all aspects of the project}
+\section{Identify possible future work}
+\section{Analysis and appraisal of methods and techniques used}
+\section{Elaborate on lessons learned}
+
+\chapter{Conclusion}
+\begin{itemize}
+  \item Should be a natural end point of the argument started by the Introduction
+  \item Draws upon problem description and literature review to work done with
+    expected results
+  \item Should be a natural end point of the argument started by the Introduction
+  \item Should draw together lessons learned from critical evaluation
+  \item Should clearly identify contributions to current knowledge or practice
+\end{itemize}
+
+\begin{appendices}
+\chapter{Appendices}
+\section{Tools used}
+\subsection{Clojure}
+Clojure is a dialect of lisp that can either be compiled and run on the JVM or
+compiled into javascript to either be run on the browser or in a nodejs VM.
+\subsection{Boot}
+\section{Guides}
+\subsection{User Guide}
+\subsection{Management Guide}
+\subsection{Developer Guide}
+\section{Code}
+\subsection{Important Parts Only?}
+\end{appendices}
+
+\bibliographystyle{agsm} \bibliography{references}
+
+\end{document}
