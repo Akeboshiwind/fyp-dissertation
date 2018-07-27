@@ -3,10 +3,11 @@
 \usepackage{geometry}
 \usepackage{pdfpages}
 \usepackage{gensymb}
+\usepackage{todonotes}
+\usepackage{listings}
 \usepackage[titletoc]{appendix}
 
 \geometry{a4paper, portrait, margin=1in}
-
 
 \begin{document}
 
@@ -14,85 +15,76 @@
 % \setcounter{page}{1}
 
 \title{Dissertation} \author{Oliver Marshall}
-\maketitle
+\includepdf{fyp-coversheet.pdf}
 \newpage
 
 \begin{abstract}
-Outline main aims and achievements of project
-No more that 300 words
+  In this document I describe and implement the core of a home automation system
+  which uses a Hierarchical Task Network planner to plan actions that the
+  automation system should take. The core accepts as input a set of user defined
+  `domain extension' files as well as a `problem' file that are combined
+  together to form a more complete understanding of the context of the problem.
+  Allowing third parties to define the domain extensions enables the easy
+  extension of the home automation system to work with new devices.
+
+  This document starts by introducing the problem to be explored in the rest of
+  the document, this is followed by a literature review investigating the
+  current approaches to home automation and automated planning. It then details
+  the design, implementation and testing of the core of a home automation
+  system. Finally it concludes by discussing the achievements of the system as
+  well as additions to the system to improve the design.
 \end{abstract}
 \newpage
 
 \renewcommand{\abstractname}{Acknowledgments}
 \begin{abstract}
-  With many thanks to
-  \begin{itemize}
-      \item Project Tutor
-      \item Peers
-      \item Proofreaders
-  \end{itemize}
+  I would like to acknowledge the help and encouragement offered by me project
+  supervisor, Dr Qinggang Meng. His help pushed me to create a better solution
+  that I could have otherwise.
 \end{abstract}
 \newpage
 
 \tableofcontents
 \newpage
 
+\listoffigures
+\newpage
+
 \chapter{Introduction}
-\section{What is the problem?}
-\subsection{Introduce problem}
-\subsection{Indicate context for problem}
-\section{Why is this problem important/worth investigating?}
-*Most important section in this chapter*
-\section{The structure of this document}
+\input{chapters/introduction}
 
 \chapter{Literature Review}
-\section{What research has already been done?}
-\subsection{Domain specific vs Domain independent}
-\section{Relevance to this work}
-\section{Appraisal of other research}
-\section{Identify gap in research}
+\input{chapters/literature-review}
 
-\chapter{Identify Potential Solution}
-\section{Use appropriate methods and techniques to:}
-\subsection{Identify requirements of the solution}
-\subsection{Identify structure and approach of the solution}
+\chapter{Design}
+\input{chapters/design}
 
-\chapter{Requirements Analysis and Requirements Specification}
-\section{Process used to capture requirements}
-\section{Identify and Discuss Key Requirements}
-\subsection{Areas of Difficulty or Conflict}
+\chapter{Implementation}
+\input{chapters/implementation}
 
-\chapter{Analyze Work}
-\section{Critically analyze all aspects of the project}
-\section{Identify possible future work}
-\section{Analysis and appraisal of methods and techniques used}
-\section{Elaborate on lessons learned}
+\chapter{System Testing}
+\input{chapters/system-testing}
 
 \chapter{Conclusion}
-\begin{itemize}
-  \item Should be a natural end point of the argument started by the Introduction
-  \item Draws upon problem description and literature review to work done with
-    expected results
-  \item Should be a natural end point of the argument started by the Introduction
-  \item Should draw together lessons learned from critical evaluation
-  \item Should clearly identify contributions to current knowledge or practice
-\end{itemize}
+\input{chapters/conclusion}
 
 \begin{appendices}
-\chapter{Appendices}
-\section{Tools used}
-\subsection{Clojure}
-Clojure is a dialect of lisp that can either be compiled and run on the JVM or
-compiled into javascript to either be run on the browser or in a nodejs VM.
-\subsection{Boot}
-\section{Guides}
-\subsection{User Guide}
-\subsection{Management Guide}
-\subsection{Developer Guide}
-\section{Code}
-\subsection{Important Parts Only?}
+  \chapter{Tools Used}
+  \input{chapters/tools-used}
+
+  \chapter{Conceptual Model for Planning}
+  \label{appendix:dynamic-planning}
+  \input{chapters/dynamic-planning}
+
+  %\chapter{Code}
+  %\input{chapters/code}
+
+  \chapter{Simple Home Example}
+  \label{appendix:home-example}
+  \input{chapters/home-example}
 \end{appendices}
 
-\bibliographystyle{agsm} \bibliography{references}
+\bibliographystyle{agsm}
+\bibliography{references}
 
 \end{document}

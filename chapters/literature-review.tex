@@ -1,0 +1,108 @@
+\section{Internet of Things}
+``The Internet of things is the network of physical devices, vehicles, home
+appliances and other items embedded with electronics, software, sensors,
+actuators, and network connectivity which enables these objects to connect and
+exchange data \citep{Contributors2018}". This year it is estimated that there
+are over 20 billion IoT devices connected to the internet \citep{Statista2015}
+with predictions that there will be up to 50 billion devices in 2020
+\citep{Evans2011}. With this increasing number of devices inevitably a large
+portion of these devices end up in home environments. For these devices to
+produce a useful output there needs to be some intelligence managing and
+controlling them. This could be the user manually controlling the devices, the
+devices communicating with and controlling the other devices in the network or
+via a central intelligent controller. The latter is what I will be focusing on.
+
+\section{Home Automation}
+In the review of home automation systems done by \cite{Lobaccaro2016}, it can be
+observed that most of the systems reviewed are either closed source systems or
+do not support a large range of devices. Extensibility is an important feature
+of home automation as users won't always want to be locked into using a specific
+set of devices when they choose a controller for their home automation system.
+An avenue that hasn't been considered is using automated planning to control the
+devices, by using a domain-independent or domain configurable device new actions
+could be added by the devices as they enter the system, or the controller could
+detect new devices and add actions accordingly.
+
+\section{Automated Planning}
+The Handbook of Knowledge Representation defines automated planning as "the
+deliberation process that chooses and organizes actions by anticipating their
+expected effects" \citep{Cimatti2008}.
+
+\section{Classical planning}
+Classical planning is an active area of research concerning planning, but the
+key point of this area is that it constrains the planners by making a series of
+assumptions that limit the types of problems that can be solved by the planners.
+These assumptions mainly concern things that usually affect real- world systems
+such as implicit time taken or sequential plans. Because of this, most problems
+that are likely to be faced when using planning in the real-world are unable to
+be solved by a purely classical planner. And as classical planning is the main
+focus for much of the research done in planning these assumptions have effects
+on other planners developed outside of classical planning.
+
+\section{Domain specific}
+This area of planning relies on encoding domain information into the planner
+itself, allowing the planner to make efficient plans to solve problems in this
+domain. The downside of this type of planner is that it is locked into the
+domain of problems it attempts to solve, and cannot be used in other domains
+without major work being done on it.
+
+\section{Domain independent}
+This is the type of planner that has been the focus of the most research as
+classical planning comes under this topic. This style of planning focuses on
+making the planning algorithm able to solve problems from different domains,
+they do this by having the actions available be part of the input to the
+planner. By doing this they are more flexible than domain-specific planners as
+they can solve problems for many different domains instead of just one, but
+because the domain-specific planner can encode information about the domain,
+domain independent planners tend to have worse performance.
+
+\section{Domain configurable} \label{section:domain-configurable}
+A middle ground between domain-specific and independent planners is domain
+configurable planners, these can solve a wide range of problems well and quickly
+as shown in the International Planning Competition in 2000 and 2002, and they do
+this without having to program a new core. They do this by allowing domain
+information to be encoded in the problem definition allowing the planners to
+decrease the search space and thus decrease search time and enabling them to
+produce better plans. There are two main types of configurable planning:
+hierarchical task network (HTN) planner, which plans by decomposing tasks into
+subtasks continually until only primitive tasks remain; and control-rule
+planners which define a set of rules for invalid states allowing the planner to
+backtrack until a new valid path is found. Benefits of these planners include:
+having a mobile core like domain-independent planners which reduces the amount
+of work needing to be done to introduce a new problem to the planner; by having
+knowledge about the domain, the planner can produce better plans faster.
+
+\section{Comparison}
+\cite{Nau2007} compares these different types of planners using three different
+comparisons: upfront effort, performance and coverage. In his comparison he
+found that configurable planners performed well compared to the other planners,
+having lower upfront costs than domain-specific planners but higher than domain
+independent, but by they also performed better than domain-independent planners
+although worse than domain-specific planners although he did note that "a
+sufficiently capable domain-configurable planner should have nearly the same
+level of performance because it should be possible to encode the same
+domain-specific problem-solving techniques into the domain description". In the
+author's research into the International Planning Competition, he found that
+domain configurable planners end up having better coverage than the other types,
+the author contributes this "partly to efficiency and partly to expressive
+power". From this comparison, configurable planners seem to be the best choice,
+especially if you are going to be solving different problems like in home
+automation.
+
+\section{Conclusion}
+The area of home automation is already large and will be growing every year,
+because of this it is important that the control systems we develop are easily
+extensible and smart enough to solve the increasing demands of the system's
+users. Domain configurable planning seems to be a good way of solving this
+configurability problem as it can solve problems from many different domains
+while still remaining performant. Planning's applicability to this domain has
+not been explored before, this might present some problems, but these should
+have been explored when applying planning to other domains, so they should be
+easy to overcome. Something I have not seen any research on is the effectiveness
+of extending a domain via plugins provided by multiple parties, this is
+something I plan to base a large part of my project on.
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: "../diss"
+%%% End:

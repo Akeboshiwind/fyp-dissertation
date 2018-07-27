@@ -1,0 +1,129 @@
+\section{Problem File - p.prob}
+This problem file describes a home with several lights in it as well as the
+current hour of the day. The problem also specifies to run the `automate-house'
+method first, this is where the user defined rules are.
+
+\begin{lstlisting}
+(defproblem
+  [(hour 12)
+   (light light1) (on light1)
+   (light light2) (off light2)
+   (light light3) (on light3)
+   (light light4) (off light4)
+   (light light5) (off light5)
+   (light light6) (on light6)
+   (light light7) (off light7)
+   (light light8) (off light8)
+   (light light9) (on light9)]
+  [(automate-house)])
+\end{lstlisting}
+
+\section{User Defined rules - user-rules.dext}
+This domain extension describes the rules that the manager would have configured
+in the home automation system's user interface. In this case the rules are: if
+it is the afternoon and there are some lights on, then turn all the lights off;
+and if it is the morning or the evening and there are some lights off, then turn
+all the lights on.
+
+\begin{lstlisting}
+[(:method (rule-1)
+          (and (afternoon)
+               (not
+                (forall [?light]
+                        (light ?light)
+                        (off ?light))))
+          [(!turn-off-all)]
+          ()
+          [])
+
+ (:method (rule-2)
+          (and (or (evening)
+                   (morning))
+               (not
+                (forall [?light]
+                        (light ?light)
+                        (on ?light))))
+          [(!turn-on-all)]
+          ()
+          [])
+
+ (:method (automate-house)
+          ()
+          [(rule-1) (rule-2)])]
+\end{lstlisting}
+
+\section{Time Middleware - time.dext}
+This domain extension describes a simple example of a middleware that provides
+three axiom predicates for describing the time of day.
+
+\begin{lstlisting}
+[(:- (morning)
+     (and (hour ?hour)
+          (call > ?hour 0)
+          (call < ?hour 6)))
+
+ (:- (afternoon)
+     (and (hour ?hour)
+          (call >= ?hour 6)
+          (call < ?hour 20)))
+
+ (:- (evening)
+     (and (hour ?hour)
+          (call >= ?hour 20)
+          (call < ?hour 24)))]
+\end{lstlisting}
+
+\section{Device Driver - light1.dext}
+This domain extension describes a simple device driver to interface with the
+lights configured in the system.
+
+\begin{lstlisting}
+[(:operator (!turn-on ?light)
+            (and (light ?light)
+                 (off ?light))
+            [(off ?light)]
+            [(on ?light)])
+
+ (:operator (!turn-on-all)
+            ()
+            [(forall [?light]
+                     (and (light ?light)
+                          (off ?light))
+                     [(off ?light)])]
+            [(forall [?light]
+                     (and (light ?light)
+                          (off ?light))
+                     [(on ?light)])])
+
+ (:operator (!turn-off ?light)
+            (and (light ?light)
+                 (on ?light))
+            [(on ?light)]
+            [(off ?light)])
+
+ (:operator (!turn-off-all)
+            ()
+            [(forall [?light]
+                     (and (light ?light)
+                          (on ?light))
+                     [(on ?light)])]
+            [(forall [?light]
+                     (and (light ?light)
+                          (on ?light))
+                     [(off ?light)])])
+
+ (:method (toggle-light-internal ?light)
+          (on ?light)
+          [(!turn-off ?light)]
+          (off ?light)
+          [(!turn-on ?light)])
+
+ (:method (toggle-light ?light)
+          (light ?light)
+          [(toggle-light-internal ?light)])]
+\end{lstlisting}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: "../diss"
+%%% End:

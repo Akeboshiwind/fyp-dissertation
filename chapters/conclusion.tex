@@ -1,0 +1,36 @@
+In my work I have described the design of a system that allows users to define
+`domain extensions' as a way of combining disparate information about a domain.
+This method of combining knowledge provided the advantage of allowing multiple
+different third parties to write software that integrated well with the rest of
+the system. By allowing multiple third parties to develop software for the
+system the software can grow quickly as users discover devices that they wish to
+be integrated in the system. Because the software plugins developed by these
+third parties is separate to the system I have designed, the core that I have
+designed is not effected by the development of these plugins which means that my
+system remains easy to maintain no matter the number of devices integrated.
+
+This method also has some disadvantages in that if the third parties are writing
+software about similar devices or concepts, then an agreement needs to be made
+about the terms used and their meaning in context with the system, if this is
+not done then it can be easy for the system to develop complex hard to fix bugs.
+A resistance against this could be to have an official `repository' of plugins
+that have been compared to a set of standards to reduces the number of such
+collisions. This solution introduces extra maintenance costs as well as
+possibly stifling the growth of plugins that work differently to how the
+standards might expect.
+
+This project has shown that this method is feasible at least in small cases,
+more work would need to be done to show it working in larger test cases. Work
+has also not been done to address the feedback required for the state of the
+world to change nor has work been done to address concerns of actions taking a
+real amount of time.
+
+Overall I think this project has successfully implemented a core of a home
+automation system. I think more work should be done on the home automation
+surrounding my core design and there are many interesting problems still to be
+solved surrounding this solution.
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: "../diss"
+%%% End:

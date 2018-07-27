@@ -1,0 +1,916 @@
+\section{core.clj}
+\begin{lstlisting}
+(ns bitmaid.core
+  (:gen-class)
+  (:require [bitmaid.domain.compiler :as c]
+            [bitmaid.domain.executor :as e]
+            [bitmaid.jshop-wrapper :refer :all]
+            [clojure.java.shell :refer [sh]]
+            [clojure.pprint :refer [pprint]]))
+
+(defn re-files
+  ([re]
+   (re-files re "."))
+  ([re dir]
+   (let [files (->> (clojure.java.io/file dir)
+                    (.listFiles)
+                    (filter #(.isFile %))
+                    (filter #(re-matches re (.getName %))))]
+     (if (empty? files)
+       nil
+       files))))
+
+(defn delete-files
+  [files]
+  (doseq [f files]
+    (clojure.java.io/delete-file f)))
+
+(defn generate-plan
+  [domain problem]
+  (println "Create domain file")
+  (spit "housedomain" (with-out-str (pprint (e/encode domain))))
+
+  (println "Create problem file")
+  (spit "problem" (with-out-str (pprint (e/encode problem))))
+
+  (println "Compile domain")
+  (gen-domain "housedomain")
+
+  (println "Compile problem")
+  (gen-plan "problem")
+
+  (println "Recompile problem")
+  (sh "javac"
+      "-classpath" ".:resources/JSHOP2.jar:resources/antlr.jar"
+      "problem.java")
+
+  (println "Plan")
+  (let [plan (sh "java"
+                 "-classpath" ".:resources/JSHOP2.jar"
+                 "problem")]
+
+    (println "Delete class files")
+    (delete-files (re-files #".*\.class"))
+
+    (println "Delete java files")
+    (delete-files (re-files #".*\.java"))
+
+    (println "Delete domain files")
+    (delete-files (re-files #"housedomain.*"))
+
+    (println "Delete problem file")
+    (delete-files (re-files #"problem"))
+
+    (println "Shutting down agents")
+    (shutdown-agents)
+
+    (println "Finished")
+    (parse-plan-text (:out plan))))
+
+(defn file->dom-ext
+  [file]
+  (-> file
+      (slurp)
+      (c/precompile-domain-extension)))
+
+(defn file->problem
+  [file]
+  (-> file
+      (slurp)
+      (c/precompile-problem)))
+
+(defn extend-domain
+  [base extension]
+  (-> base
+      (update :axioms (partial merge (:axioms extension)))
+      (update :methods (partial merge (:methods extension)))
+      (update :operators (partial merge (:operators extension)))))
+
+(comment
+  (def domain
+    (->> (re-files #".*\.dext")
+         (map file->dom-ext)
+         (reduce (fn
+                   ([] nil)
+                   ([& args] (apply extend-domain args))))))
+
+  (def problem
+    (->> (re-files #".*\.prob")
+         (first)
+         (file->problem))))
+
+(defn -main
+  [& args]
+  (println "Searching for domain extension files")
+  (if-let [domain-files (re-files #".*\.dext")]
+    (do
+      (println "Found domain extensions:")
+      (doseq [f domain-files]
+        (println (.getName f)))
+
+      (if-let [problem-files (re-files #".*\.prob")]
+        (let [problem-file (first problem-files)]
+          (println "Found a problem file:")
+          (println (.getName problem-file))
+
+          (println "Compiling domain extensions")
+          (if-let [domain (some->> domain-files
+                                   (map file->dom-ext)
+                                   (reduce (fn
+                                             ([] nil)
+                                             ([& args] (apply extend-domain args)))))]
+            (do
+              (println "Compiling problem")
+              (if-let [problem (file->problem problem-file)]
+                (do
+                  (println "Generating plan")
+                  (if-let [plan (generate-plan domain problem)]
+                    (do
+                      (println)
+                      (println "Plan found!")
+                      (println (str "Plan: " (:plan plan)))
+                      (println (str "Cost: " (:cost plan))))
+                    (do
+                      (println)
+                      (println "No plans were found"))))
+                (println "Failed to compile problem")))
+            (println "Failed to compile domain extensions")))
+        (println "No problem file found")))
+    (println "No domain extensions found")))
+\end{lstlisting}
+
+\section{Parser - parser.clj}
+\begin{lstlisting}
+(ns bitmaid.domain.parser
+  (:require [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as gen]
+            [clojure.set :refer [union subset?]]
+            [expound.alpha :refer [expound]]))
+
+(s/def ::variable-symbol
+  (s/and symbol?
+         (comp #{\?} first name)))
+
+(s/def ::task-symbol
+  (s/and symbol?
+         (comp #{\!} first name)))
+
+(def restricted-symbols
+  #{'not 'call 'and 'or 'imply 'forall 'def})
+
+(defn restricted?
+  [symbol]
+  (boolean (restricted-symbols symbol)))
+
+(s/def ::general-symbol
+  (s/and (some-fn keyword? symbol?)
+         (comp not #{\? \!} first name)
+         (comp not restricted?)))
+
+(s/def ::constant-symbol ::general-symbol)
+(s/def ::predicate-symbol ::general-symbol)
+(s/def ::compound-task-symbol ::general-symbol)
+
+(s/def ::function-symbol ::general-symbol)
+
+(s/def ::list nil)
+(s/def ::call nil)
+
+(s/def ::term
+  (s/or
+   :variable-symbol ::variable-symbol
+   :constant-symbol ::constant-symbol
+   :number   number?
+   :call     ::call
+   :list     ::list))
+
+(s/def ::list
+  (s/and vector?
+         (s/coll-of ::term)))
+
+(s/def ::call
+  (s/and list?
+         (s/cat :call #{'call}
+                :function-symbol ::function-symbol
+                :terms (s/* ::term))))
+
+(s/def ::logical-atom*
+  (s/and list?
+       (s/cat :predicate-symbol ::predicate-symbol
+              :terms (s/* ::term))))
+
+(s/def ::logical-atom
+  (s/or :late-binding ::variable-symbol
+        :logical-atom ::logical-atom*))
+
+(s/def ::conjunction nil)
+(s/def ::disjunction nil)
+(s/def ::negation nil)
+(s/def ::implication nil)
+(s/def ::universal-quantification nil)
+(s/def ::assignment nil)
+
+(s/def ::expression
+  (s/or :conjunction  ::conjunction
+        :disjunction  ::disjunction
+        :negation     ::negation
+        :implication  ::implication
+        :universal-quantification ::universal-quantification
+        :assignment   ::assignment
+        :call         ::call
+        :logical-atom ::logical-atom))
+
+(s/def ::conjunction
+  (s/or :empty (every-pred list? empty?)
+        :normal (s/cat :and #{'and}
+                       :expressions (s/* ::expression))))
+
+(s/def ::disjunction
+  (s/cat :or #{'or}
+         :expressions (s/* ::expression)))
+
+(s/def ::negation
+  (s/cat :not #{'not}
+         :expression ::expression))
+
+(s/def ::implication
+  (s/cat :imply #{'imply}
+         :lhs ::expression
+         :rhs ::expression))
+
+(defn walk-tree
+  "Returns a sequence of the nodes in a tree, via depth-first walk."
+  [tree]
+  (tree-seq seqable? identity tree))
+
+(defn find-variables
+  "Returns a set of the variables found in a spec form."
+  [spec-form]
+  (->> (walk-tree spec-form)
+       (filter #(and (seqable? %)
+                     (= :variable-symbol (first %))))
+       (map second)
+       set))
+
+(defn set=
+  "Returns true if all vectors input contain the same elements."
+  [& vectors]
+  (apply = (map set vectors)))
+
+(s/def ::universal-quantification
+  (s/and
+   (s/cat :forall #{'forall}
+          :variable-symbols (s/and vector?
+                                   (s/coll-of ::variable-symbol))
+          :predicate ::expression
+          :form ::expression)
+   (fn [form]
+     (let [predicate (:predicate form)]
+       (if (and (= :logical-atom (first predicate))
+                (= :late-binding (first (second predicate))))
+         true
+         (let [vars (:variable-symbols form)]
+           (set= vars (find-variables predicate))))))))
+
+(s/def ::assignment
+  (s/cat :def #{'def}
+         :name ::variable-symbol
+         :value ::term))
+
+(s/def ::first-satisfier-precondition
+  (s/cat :first #{:first}
+         :expression ::expression))
+
+(s/def ::sorted-precondition
+  (s/cat :first #{:sort-by}
+         :variable-symbol ::variable-symbol
+         :comparator ::function-symbol
+         :expression ::expression))
+
+(s/def ::logical-precondition
+  (s/or :first-satisfier-precondition ::first-satisfier-precondition
+        :sorted-precondition ::sorted-precondition
+        :expression ::expression))
+
+(s/def ::axiom
+  (s/cat :axiom #{':-}
+         :head ::logical-atom
+         :axioms (s/* (s/alt :named (s/cat :name ::general-symbol
+                                           :logical-precondition ::logical-precondition)
+                             :unnamed (s/cat :logical-precondition ::logical-precondition)))))
+
+(s/def ::normal-task-atom
+  (s/cat :name ::task-symbol
+         :terms (s/* ::term)))
+
+(s/def ::normal-compound-task-atom
+  (s/cat :name ::compound-task-symbol
+         :terms (s/* ::term)))
+
+(s/def ::task-atom*
+  (s/alt :primitive ::normal-task-atom
+         :compound ::normal-compound-task-atom))
+
+(s/def ::task-atom
+  (s/or :immediate-task (s/cat :immediate #{':immediate}
+                               :task ::task-atom*)
+        :normal-task ::task-atom*))
+
+(s/def ::task-list nil)
+
+(s/def ::task-list-element
+  (s/or :task-atom ::task-atom
+        :task-list ::task-list))
+
+(s/def ::task-list*
+  (s/* ::task-list-element))
+
+(s/def ::task-list
+  (s/and vector?
+         (s/alt :unordered (s/cat :unordered #{':unordered}
+                                  :task-lists ::task-list*)
+                :ordered (s/cat :task-lists ::task-list*))))
+
+(s/def ::protection-condition
+  (s/cat :protection #{':protection}
+         :logical-atom ::logical-atom))
+
+(s/def ::forall-expression
+  (s/and
+   (s/cat :forall #{'forall}
+          :variable-symbols (s/and vector?
+                                   (s/coll-of ::variable-symbol))
+          :predicate ::expression
+          :logical-atoms (s/and vector?
+                                (s/coll-of ::logical-atom*)))))
+
+(s/def ::delete-add-element
+  (s/or :logical-atom ::logical-atom
+        :protection-condition ::protection-condition
+        :forall-expresssion ::forall-expression))
+
+(s/def ::delete-add-list*
+  (s/and vector?
+         (s/coll-of ::delete-add-element)))
+
+(s/def ::delete-add-list
+  (s/or :late-binding ::variable-symbol
+        :delete-add-list ::delete-add-list*))
+
+(s/def ::operator
+  (s/&
+   (s/alt :set-cost (s/cat :operator #{':operator}
+                           :head (s/or :normal-task ::normal-task-atom)
+                           :precondition ::logical-precondition
+                           :delete-list ::delete-add-list
+                           :add-list ::delete-add-list
+                           :cost number?)
+          :no-cost  (s/cat :operator #{':operator}
+                           :head (s/or :normal-task ::normal-task-atom)
+                           :precondition ::logical-precondition
+                           :delete-list ::delete-add-list
+                           :add-list ::delete-add-list))))
+
+(s/def ::method
+  (s/cat :method #{':method}
+         :head (s/or :compound-task ::normal-compound-task-atom)
+         :options (s/* (s/alt :named (s/cat :name ::general-symbol
+                                            :precondition ::logical-precondition
+                                            :tail ::task-list)
+                              :unnamed (s/cat :precondition ::logical-precondition
+                                              :tail ::task-list)))))
+
+(s/def ::domain-extension
+  (s/coll-of (s/alt :method ::method
+                    :operator ::operator
+                    :axiom ::axiom)))
+
+(def ground? (comp empty? find-variables))
+
+(s/def ::state-list
+  (s/and vector?
+         (s/* ::logical-atom*)))
+
+(s/def ::problem
+  (s/&
+   (s/cat :defproblem #{'defproblem}
+          :initial-state ::state-list
+          :task-list ::task-list)
+   (comp ground? :initial-state)))
+
+(defn parse-spec
+  "Takes a spec and a form to be parsed or a string containing a form to be parsed,
+  attempts to parse it.
+  If the form is invalid of produces and error while parsing, returns nil."
+  [spec form]
+  (try
+    (let [form (if (string? form) (read-string form) form)
+          parsed (s/conform spec form)]
+      (if (not (= :clojure.spec.alpha/invalid parsed))
+        parsed
+        (do
+          (println "Failed to parse input form.")
+          (expound spec form))))
+    (catch Exception e (println "Parsing form caused an exception."))))
+
+
+(defn parse-domain-extension
+  "Takes a `domain-extension` form, or a string containing the form, and attempts to parse it.
+  If the form is invalid or produces an error while parsing returns nil."
+  [form]
+  (parse-spec ::domain-extension form))
+
+(defn parse-problem
+  "Takes a `problem` form, or a string containing the form, and attempts to parse it.
+  If the form is invalid or produces an error while parsing returns nil."
+  [form]
+  (parse-spec ::problem form))
+\end{lstlisting}
+
+\section{Pre-compiler - compiler.clj}
+\begin{lstlisting}
+(ns bitmaid.domain.compiler
+  (:require [bitmaid.domain.parser :as p]
+            [clojure.spec.alpha :as s]))
+
+;; Utils
+(def gen-debug-name gensym)
+(defn list-args
+  "Given a spec form, return a vector of the variables found."
+  [spec-form]
+  (->> (p/walk-tree spec-form)
+       (filter #(and (seqable? %)
+                     (= :variable-symbol (first %))))
+       (map second)))
+
+;; Compiler
+(defrecord Variable [name])
+(defrecord Constant [name])
+(defrecord TermNumber [value])
+
+(defrecord Call [function-symbol args])
+(def compile-term nil)
+(defn compile-call
+  [call]
+  (map->Call {:function-symbol (:function-symbol call)
+              :args (map compile-term (:terms call))}))
+
+
+(defrecord TermList [values])
+(defn compile-list
+  [list]
+  (map->TermList {:values (map compile-term list)}))
+
+(defn compile-term
+  [term]
+  (let [type (first term)
+        body (second term)]
+    (case type
+      :variable-symbol (map->Variable {:name body})
+      :constant-symbol (map->Constant {:name body})
+      :number (map->TermNumber {:value body})
+      :call (compile-call body)
+      :list (compile-list body))))
+
+(def compile-expression nil)
+(defrecord Conjunction [expressions])
+(defn compile-conjunction
+  [con]
+  (let [empty? (= :empty (first con))
+        body (second con)
+        expressions (if empty?
+                      []
+                      (:expressions body))]
+    (map->Conjunction {:expressions (map compile-expression expressions)})))
+
+(defrecord Disjunction [expressions])
+(defn compile-disjunction
+  [dis]
+  (map->Disjunction {:expressions (map compile-expression (:expressions dis))}))
+
+(defrecord Negation [expression])
+(defn compile-negation
+  [neg]
+  (map->Negation {:expression (compile-expression (:expression neg))}))
+
+(defrecord Implication [lhs rhs])
+(defn compile-implication
+  [implication]
+  (map->Implication {:lhs (compile-expression (:lhs implication))
+                     :rhs (compile-expression (:rhs implication))}))
+
+(defrecord UniversalQuantification [variables predicate form])
+(defn compile-universal-quantification
+  [quantif]
+  (map->UniversalQuantification {:variables (:variable-symbols quantif)
+                                 :predicate (compile-expression (:predicate quantif))
+                                 :form (compile-expression (:form quantif))}))
+
+(defrecord Assignment [name value])
+(defn compile-assignment
+  [assignment]
+  (map->Assignment {:name (:name assignment)
+                    :value (compile-term (:value assignment))}))
+
+(defrecord LateBinding [name])
+(defrecord LogicalAtom [name args])
+(defn compile-base-logical-atom
+  [atom]
+  (let [name (:predicate-symbol atom)]
+    (map->LogicalAtom {:name name
+                       :args (map compile-term (:terms atom))})))
+(defn compile-logical-atom
+  [atom]
+  (let [late-binding? (= :late-binding (first atom))
+        body (second atom)]
+    (if late-binding?
+      (map->LateBinding {:name body})
+      (compile-base-logical-atom body))))
+
+(defn compile-expression
+  [expression]
+  (let [type (first expression)
+        body (second expression)]
+    (case type
+      :conjunction  (compile-conjunction body)
+      :disjunction  (compile-disjunction body)
+      :negation     (compile-negation body)
+      :implication  (compile-implication body)
+      :universal-quantification (compile-universal-quantification body)
+      :assignment   (compile-assignment body)
+      :call         (compile-call body)
+      :logical-atom (compile-logical-atom body))))
+
+(defrecord FirstSatisfierPrecondition [expression])
+(defn compile-first-satisfier-precondition
+  [precond]
+  (map->FirstSatisfierPrecondition {:expression (compile-expression (:expression precond))}))
+
+(defrecord SortedPrecondition [variable comparator expression])
+(defn compile-sorted-precondition
+  [precond]
+  (map->SortedPrecondition {:variable (:variable-symbol precond)
+                            :comparator (:comparator precond)
+                            :expression (compile-expression (:expression precond))}))
+
+(defn compile-logical-precondition
+  [precond]
+  (let [type (first precond)
+        body (second precond)]
+    (case type
+      :first-satisfier-precondition (compile-first-satisfier-precondition body)
+      :sorted-precondition (compile-sorted-precondition body)
+      :expression (compile-expression body))))
+
+(defrecord TaskAtom [name args immediate? primitive?])
+(defn compile-task-atom
+  [atom]
+  (let [immediate? (= :immediate-task (first atom))
+        body (if immediate?
+               (:task (second atom))
+               (second atom))
+        primitive? (= :primitive (first body))
+        body (second body)
+        name (:name body)
+        args (map compile-term (:terms body))]
+    (map->TaskAtom {:name name
+                    :args args
+                    :immediate? immediate?
+                    :primitive? primitive?})))
+
+(defrecord TaskList [task-lists ordered?])
+(def compile-task-list nil)
+(defn compile-task-list*
+  [list]
+  (let [task-atom? (= :task-atom (first list))
+        body (second list)]
+    (if task-atom?
+      (compile-task-atom body)
+      (compile-task-list body))))
+
+(defn compile-task-list
+  [list]
+  (let [ordered? (= :ordered (first list))
+        body (second list)]
+    (map->TaskList {:task-lists (map compile-task-list* (:task-lists body))
+                    :ordered? ordered?})))
+
+(defrecord MethodOption [name precondition tail])
+(defn compile-method-option
+  [option]
+  (let [named? (= :named (first option))
+        body (second option)
+        name (if named?
+               (:name body)
+               (gen-debug-name "method-branch_"))
+        precondition (compile-logical-precondition (:precondition body))
+        tail (compile-task-list (:tail body))]
+    (map->MethodOption {:name name
+                        :precondition precondition
+                        :tail tail})))
+
+(defrecord Method [name args options])
+(defn method-name
+  [method]
+  (-> method
+      :head
+      second
+      :name))
+
+(defn compile-method
+  [method]
+  (let [name (method-name method)
+        args (list-args (:head method))
+        options (map compile-method-option (:options method))]
+    (map->Method {:name name
+                  :args args
+                  :options options})))
+
+(defrecord ProtectionCondition [atom])
+(defn compile-protection-condition
+  [protec]
+  (map->ProtectionCondition {:atom (compile-logical-atom (:logical-atom protec))}))
+
+(defrecord ForallExpression [variables predicate logical-atoms])
+(defn compile-forall-expression
+  [forall]
+  (map->ForallExpression {:variables (:variable-symbols forall)
+                          :predicate (compile-expression (:predicate forall))
+                          :form (map compile-logical-atom (:logical-atoms forall))}))
+
+(defn compile-delete-add-element
+  [element]
+  (let [type (first element)
+        body (second element)]
+    (case type
+      :logical-atom (compile-logical-atom body)
+      :protection-condition (compile-protection-condition body)
+      :forall-expresssion (compile-forall-expression body))))
+
+(defn compile-delete-add-list
+  [list]
+  (let [late-binding? (= :late-binding (first list))
+        body (second list)]
+    (if late-binding?
+      (map->LateBinding {:name body})
+      (map compile-delete-add-element body))))
+
+(defn operator-name
+  [operator]
+  (-> operator
+      second
+      :head
+      second
+      :name))
+
+(defrecord Operator [name args precondition delete-list add-list cost])
+(defn compile-operator
+  [operator]
+  (let [has-cost? (= :set-cost (first operator))
+        body (second operator)
+        cost (if has-cost?
+               (:cost body)
+               1)
+        name (operator-name operator)
+        args (list-args (:head body))
+        precondition (compile-logical-precondition (:precondition body))
+        delete-list (compile-delete-add-list (:delete-list body))
+        add-list (compile-delete-add-list (:add-list body))]
+    (map->Operator {:name name
+                    :args args
+                    :precondition precondition
+                    :delete-list delete-list
+                    :add-list add-list
+                    :cost cost})))
+
+(defrecord AxiomPrecondition [name precondition])
+(defn compile-axiom-precondition
+  [precondition]
+  (let [named? (= :named (first precondition))
+        body (second precondition)
+        name (if named?
+               (:name body)
+               (gen-debug-name "axiom-precondition_"))]
+    (map->AxiomPrecondition {:name name
+                             :precondition (compile-logical-precondition (:logical-precondition body))})))
+
+(defn axiom-name
+  [axiom]
+  (-> axiom
+      :head
+      second
+      :predicate-symbol))
+
+(defrecord Axiom [name args preconditions])
+(defn compile-axiom
+  [axiom]
+  (map->Axiom {:name (axiom-name axiom)
+               :args (list-args (:head axiom))
+               :preconditions (map compile-axiom-precondition (:axioms axiom))}))
+
+
+(defrecord DomainExtension [methods operators axioms])
+(defn compile-domain-extension
+  [domain-extension]
+  (loop [acc domain-extension
+         methods {}
+         operators {}
+         axioms {}]
+    (if (empty? acc)
+      (map->DomainExtension {:methods methods
+                             :operators operators
+                             :axioms axioms})
+      (let [next (first acc)
+            type (first next)
+            body (second next)]
+        (case type
+          :method (recur (rest acc)
+                         (assoc methods (method-name body) (compile-method body))
+                         operators
+                         axioms)
+          :operator (recur (rest acc)
+                           methods
+                           (assoc operators (operator-name body) (compile-operator body))
+                           axioms)
+          :axiom (recur (rest acc)
+                        methods
+                        operators
+                        (assoc axioms (axiom-name body) (compile-axiom body))))))))
+
+(defrecord Problem [initial-state task-list])
+(defn compile-problem
+  [problem]
+  (let [initial-state (map compile-base-logical-atom (:initial-state problem))
+        task-list (compile-task-list (:task-list problem))]
+    (map->Problem {:initial-state initial-state
+                   :task-list task-list})))
+
+(defn precompile-domain-extension
+  [domain-extension]
+  (compile-domain-extension
+   (p/parse-domain-extension domain-extension)))
+
+(defn precompile-problem
+  [problem]
+  (compile-problem
+   (p/parse-problem problem)))
+\end{lstlisting}
+
+\section{Encoder - executor.clj}
+\begin{lstlisting}
+(ns bitmaid.domain.executor
+  (:require [bitmaid.domain.compiler :as c]
+            [bitmaid.domain.parser :as p]
+            [clojure.spec.alpha :as s])
+  ;; Import records
+  (:import [bitmaid.domain.compiler Variable
+            Constant TermNumber Call TermList
+            Conjunction Disjunction Negation
+            Implication UniversalQuantification
+            Assignment LateBinding LogicalAtom
+            FirstSatisfierPrecondition SortedPrecondition
+            TaskAtom TaskList MethodOption
+            Method ProtectionCondition ForallExpression
+            Operator AxiomPrecondition Axiom DomainExtension
+            Problem]))
+
+(def flatten-1 (partial mapcat identity))
+
+(defprotocol JSHOPEncode
+  (encode [this] "Encode the given form into a form that the JSHOP compiler will understand."))
+
+(extend-protocol JSHOPEncode
+  Variable
+  (encode
+    [{:keys [name]}]
+    name)
+  Constant
+  (encode
+    [{:keys [name]}]
+    name)
+  TermNumber
+  (encode
+    [{:keys [value]}]
+    value)
+  Call
+  (encode
+    [{:keys [function-symbol args]}]
+    `(~'call ~function-symbol ~@(map encode args)))
+  TermList
+  (encode
+    [{:keys [values]}]
+    `(~@(map encode values)))
+  Conjunction
+  (encode
+    [{:keys [expressions]}]
+    (if (empty? expressions)
+      `()
+      `(~'and ~@(map encode expressions))))
+  Disjunction
+  (encode
+    [{:keys [expressions]}]
+    `(~'or ~@(map encode expressions)))
+  Negation
+  (encode
+    [{:keys [expression]}]
+    `(~'not ~(encode expression)))
+  Implication
+  (encode
+    [{:keys [lhs rhs]}]
+    `(~'imply ~(encode lhs) ~(encode rhs)))
+  UniversalQuantification
+  (encode
+    [{:keys [variables predicate form]}]
+    `(~'forall (~@variables)
+               ~(encode predicate)
+               ~(encode form)))
+  Assignment
+  (encode
+    [{:keys [name value]}]
+    `(~'assign ~name ~(encode value)))
+  LateBinding
+  (encode
+    [{:keys [name]}]
+    name)
+  LogicalAtom
+  (encode
+    [{:keys [name args]}]
+    `(~name ~@(map encode args)))
+  FirstSatisfierPrecondition
+  (encode
+    [{:keys [expression]}]
+    `(~':first ~(encode expression)))
+  SortedPrecondition
+  (encode
+    [{:keys [variable comparator expression]}]
+    `(~':sort-by ~variable ~comparator ~(encode expression)))
+  TaskAtom
+  (encode
+    [{:keys [name args immediate? primitive?]}]
+    `(~@(when immediate? [':immediate])
+      ~name
+      ~@(map encode args)))
+  TaskList
+  (encode
+    [{:keys [task-lists ordered?]}]
+    `(~@(when (not ordered?) [':unordered])
+      ~@(map encode task-lists)))
+  MethodOption
+  (encode
+    [{:keys [name precondition tail]}]
+    `(~name
+      ~(encode precondition)
+      ~(encode tail)))
+  Method
+  (encode
+    [{:keys [name args options]}]
+    `(~':method (~name ~@args)
+      ~@(flatten-1 (map encode options))))
+  ProtectionCondition
+  (encode
+    [{:keys [atom]}]
+    `(~':protection ~(encode atom)))
+  ForallExpression
+  (encode
+    [{:keys [variables predicate logical-atoms]}]
+    `(~'forall (~@variables)
+      ~(encode predicate)
+      (~@(map encode logical-atoms))))
+  Operator
+  (encode
+    [{:keys [name args precondition delete-list add-list cost]}]
+    `(~':operator (~name ~@args)
+      ~(encode precondition)
+      (~@(map encode delete-list))
+      (~@(map encode add-list))
+      ~cost))
+  AxiomPrecondition
+  (encode
+    [{:keys [name precondition]}]
+    `(~name
+      ~(encode precondition)))
+  Axiom
+  (encode
+    [{:keys [name args preconditions]}]
+    `(~':- (~name ~@args)
+      ~@(flatten-1 (map encode preconditions))))
+  DomainExtension
+  (encode
+    [{:keys [axioms methods operators]}]
+    `(~'defdomain ~'housedomain
+      (~@(->> (list axioms methods operators)
+              (map vals)
+              (flatten-1)
+              (map encode)))))
+  Problem
+  (encode
+    [{:keys [initial-state task-list]}]
+    `(~'defproblem ~'problem ~'housedomain
+       (~@(map encode initial-state))
+       (~@(encode task-list)))))
+\end{lstlisting}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: "../diss"
+%%% End:
